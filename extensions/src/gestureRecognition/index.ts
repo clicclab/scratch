@@ -319,11 +319,11 @@ export default class gestureRecognition extends extension({
   }
 
   /**
-   * Opens a new tab with the Google Teachable Machine website
+   * Opens a new tab with the Google Gesture Recognition website
    */
-  @buttonBlock("Teachable Machine Site ↗")
-  openTeachableMachine() {
-    window.open('https://teachablemachine.withgoogle.com/train', '_blank');
+  @buttonBlock("Gesture Recognition Site ↗")
+  openGestureRecognition() {
+    window.open('https://clicclab.github.io/SensorTimeline', '_blank');
   }
 
   @legacyBlock.useModelBlock()

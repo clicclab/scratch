@@ -11,5 +11,9 @@
     "add:arg": "pnpm --filter prg-extension-root add:arg gestureRecognition"
   },
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.21",
+    "@tensorflow/tfjs": "4.22.0"
+  }
 }
