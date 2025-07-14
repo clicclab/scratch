@@ -1,5 +1,6 @@
 import { Environment, buttonBlock, extension } from "$common";
 import { legacyFullSupport, } from "./legacy";
+import * as tf from '@tensorflow/tfjs';
 
 const { legacyBlock, legacyExtension } = legacyFullSupport.for<gestureRecognition>();
 const VideoState = {
@@ -226,24 +227,45 @@ export default class gestureRecognition extends extension({
     }
   }
 
-  useModel(url) {
+
+  /**
+   * Accepts a base64-encoded JSON string representing a KnnClassifierModel or NNClassifierModel.
+   * Decodes, parses, and stores the model for prediction.
+   */
+  useModel(base64Model: string) {
     try {
-      const modelUrl = this.modelArgumentToURL(url);
-      this.getPredictionStateOrStartPredicting(modelUrl, true);
-      this.updateStageModel(modelUrl);
+      // Decode base64 to JSON string (opposite of exportNNModelToBase64)
+      const exportStr = decodeURIComponent(escape(atob(base64Model)));
+      const parsed = JSON.parse(exportStr);
+      // If this is a NNClassifierModel export, it will have json, weights
+      if (parsed.json && parsed.weights) {
+        const { json, weights } = parsed;
+        const modelTopology = JSON.parse(json).modelTopology;
+        const weightSpecs = JSON.parse(json).weightSpecs;
+        const outputLabels = JSON.parse(json).outputLabels || [];
+        const weightData = new Uint8Array(weights).buffer;
+        tf.loadLayersModel({
+          load() {
+            return Promise.resolve({ modelTopology, weightSpecs, weightData });
+          }
+        }).then(loadedModel => {
+          const modelKey = `model_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
+          const modelObj = { outputLabels, weights: loadedModel };
+          this.predictionState[modelKey] = { model: modelObj };
+          this.updateStageModel(modelKey);
+          console.log("Loaded NNClassifierModel from base64", modelKey, modelObj);
+        });
+      } else {
+        // Assume it's a plain JSON model (e.g., kNN)
+        const modelKey = `model_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
+        this.predictionState[modelKey] = { model: parsed };
+        this.updateStageModel(modelKey);
+        console.log("Loaded kNN model from base64", modelKey, parsed);
+      }
     } catch (e) {
       this.teachableImageModel = null;
+      console.error("Failed to load model from base64 string", e);
     }
-  }
-
-  modelArgumentToURL(modelArg: string) {
-    const endpointProvidedFromInterface = "https://teachablemachine.withgoogle.com/models/";
-    // NOTE: It's possible Google will change this endpoint in the future, and that will break this extension.
-    // TODO: https://github.com/mitmedialab/prg-extension-boilerplate/issues/343
-    const redirectEndpoint = "https://storage.googleapis.com/tm-model/";
-    return modelArg.startsWith(endpointProvidedFromInterface)
-      ? modelArg.replace(endpointProvidedFromInterface, redirectEndpoint)
-      : redirectEndpoint + modelArg + "/";
   }
 
   updateStageModel(modelUrl) {
@@ -326,9 +348,91 @@ export default class gestureRecognition extends extension({
     window.open('https://clicclab.github.io/SensorTimeline', '_blank');
   }
 
-  @legacyBlock.useModelBlock()
-  useModelBlock(url: string) {
-    this.useModel(url);
+  @buttonBlock("Set model")
+  setModelButton() {
+    this.showModelInputModal();
+  }
+
+  /**
+   * Show a modal dialog with a textarea for base64 model input (no length limit).
+   */
+  showModelInputModal() {
+    // Remove any existing modal
+    const existing = document.getElementById('gesture-model-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'gesture-model-modal';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.background = 'rgba(0,0,0,0.5)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '9999';
+
+    const box = document.createElement('div');
+    box.style.background = '#fff';
+    box.style.padding = '24px';
+    box.style.borderRadius = '8px';
+    box.style.boxShadow = '0 2px 16px rgba(0,0,0,0.2)';
+    box.style.maxWidth = '90vw';
+    box.style.width = '400px';
+    box.style.display = 'flex';
+    box.style.flexDirection = 'column';
+    box.style.gap = '12px';
+
+    const label = document.createElement('label');
+    label.textContent = 'Paste base64 model string:';
+    label.style.marginBottom = '4px';
+
+    const textarea = document.createElement('textarea');
+    textarea.style.width = '100%';
+    textarea.style.height = '120px';
+    textarea.style.fontFamily = 'monospace';
+    textarea.style.fontSize = '12px';
+    textarea.placeholder = 'Paste base64-encoded model here...';
+
+    const error = document.createElement('div');
+    error.style.color = 'red';
+    error.style.fontSize = '12px';
+    error.style.display = 'none';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.display = 'flex';
+    btnRow.style.justifyContent = 'flex-end';
+    btnRow.style.gap = '8px';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = () => modal.remove();
+
+    const okBtn = document.createElement('button');
+    okBtn.textContent = 'Load Model';
+    okBtn.onclick = () => {
+      const val = textarea.value.trim();
+      if (!val) {
+        error.textContent = 'Please paste a model string.';
+        error.style.display = 'block';
+        return;
+      }
+      try {
+        this.useModel(val);
+        modal.remove();
+      } catch (e) {
+        error.textContent = 'Invalid model string.';
+        error.style.display = 'block';
+      }
+    };
+
+    btnRow.append(cancelBtn, okBtn);
+    box.append(label, textarea, error, btnRow);
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    textarea.focus();
   }
 
   @legacyBlock.whenModelMatches(dynamicClassMenu)

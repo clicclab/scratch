@@ -5,18 +5,6 @@ export const info = {
   "showStatusButton": true,
   "blocks": [
     {
-      "opcode": "useModelBlock",
-      "text": "use model [MODEL_URL]",
-      "arguments": {
-        "MODEL_URL": {
-          "type": "string",
-          // "defaultValue": "https://teachablemachine.withgoogle.com/models/knrpLxv8N/"
-          "defaultValue": "Paste model here!"
-        }
-      },
-      "blockType": "command"
-    },
-    {
       "opcode": "whenModelMatches",
       "text": "when model detects [CLASS_NAME]",
       "blockType": "hat",
