@@ -1,8 +1,12 @@
 import { Environment, buttonBlock, extension } from "$common";
 import { legacyFullSupport, } from "./legacy";
 import * as tf from '@tensorflow/tfjs';
-import { MediaPipePoseDetector } from "./mediapipe";
+import { MediaPipePoseDetector, normalizeSkeletonToHipCenter } from "./mediapipe";
 import { PoseDataPoint } from "./types";
+import { filterToUsedLandmarks } from "./poseLandmarks";
+import { NNClassifierModel, nnPredict } from "./nn";
+import { classifyWithKnnModel } from "./knn";
+import { dtwDistance } from "./dtw";
 
 const { legacyBlock, legacyExtension } = legacyFullSupport.for<gestureRecognition>();
 const VideoState = {
@@ -78,9 +82,17 @@ export default class gestureRecognition extends extension({
     }
   }
 
+
+  isKnnModel(model: any): boolean {
+    return model && Array.isArray(model.segments);
+  }
+  
+  isNNModel(model: any): boolean {
+    return model && Array.isArray(model.outputLabels);
+  }
+
   /**
-     * Occasionally step a loop to sample the video, stamp it to the preview
-     * skin, and add a TypedArray copy of the canvas's pixel data.
+     * Occasionally run prediction on pose data
      * @private
      */
   _loop() {
@@ -91,7 +103,50 @@ export default class gestureRecognition extends extension({
       return;
     }
 
-    // TODO: Predict
+    // Predict using model
+    let data = this.poseRecordingData.slice(-50);
+    if (data.length < 50) {
+      // If we don't have enough data, skip this frame
+      return;
+    }
+
+    let poseData = data.map(pose => {
+        let temp = normalizeSkeletonToHipCenter(pose.landmarks);
+        temp = filterToUsedLandmarks(temp);
+        return {
+          ...pose, landmarks: temp 
+        };
+    }).map((pose: any) => {
+        // pose is an array of landmarks
+        return pose.landmarks.flatMap((l: any) => [l.x, l.y, l.z]);
+    });
+
+    let inputFeatures = poseData[0].length * 3;
+
+    let model = this.getPredictionStateOrStartPredicting(this.teachableImageModel);
+
+    if (!model) {
+      console.warn("No model loaded for prediction");
+      return;
+    }
+
+    let result;
+    if (this.isNNModel(model)) {
+      // This is a NNClassifierModel
+      result = nnPredict(model, poseData, inputFeatures);
+      console.log("NN prediction result:", result);
+    } else if (this.isKnnModel(model)) {
+      // This is a kNNClassifierModel
+      result = classifyWithKnnModel(model, poseData, dtwDistance);
+      console.log("kNN prediction result:", result);
+    } else {
+      console.log("Unknown model", model);
+    }
+
+    // Shorten poseRecordingData
+    if (this.poseRecordingData.length > 100) {
+      this.poseRecordingData = this.poseRecordingData.slice(-50);
+    }
   }
 
     poseDetectionFrame: number | null = null;
@@ -120,8 +175,6 @@ export default class gestureRecognition extends extension({
                 videoLandmarks: landmarks.videoLandmarks,
             });
           }
-        
-
         this.poseDetectionFrame = requestAnimationFrame(detect);
       };
 
@@ -234,14 +287,14 @@ export default class gestureRecognition extends extension({
         }).then(loadedModel => {
           const modelKey = `model_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
           const modelObj = { outputLabels, weights: loadedModel };
-          this.predictionState[modelKey] = { model: modelObj };
+          this.predictionState[modelKey] = modelObj;
           this.updateStageModel(modelKey);
           console.log("Loaded NNClassifierModel from base64", modelKey, modelObj);
         });
       } else {
         // Assume it's a plain JSON model (e.g., kNN)
         const modelKey = `model_${Date.now()}_${Math.floor(Math.random()*1e6)}`;
-        this.predictionState[modelKey] = { model: parsed };
+        this.predictionState[modelKey] = parsed;
         this.updateStageModel(modelKey);
         console.log("Loaded kNN model from base64", modelKey, parsed);
       }
