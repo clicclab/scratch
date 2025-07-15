@@ -38,6 +38,7 @@ export default class gestureRecognition extends extension({
   teachableImageModel;
   latestAudioResults: any;
   poseDetector: MediaPipePoseDetector | null = null;
+  topClass: string = "";
 
   test: string = "";
 
@@ -142,6 +143,8 @@ export default class gestureRecognition extends extension({
     } else {
       console.log("Unknown model", model);
     }
+
+    this.topClass = result ?? "";
 
     // Shorten poseRecordingData
     if (this.poseRecordingData.length > 100) {
@@ -255,12 +258,7 @@ export default class gestureRecognition extends extension({
    * @returns {string} class name if video frame matched, empty string if model not loaded yet
    */
   getModelPrediction() {
-    const modelUrl = this.teachableImageModel;
-    const predictionState: { topClass: string } = this.getPredictionStateOrStartPredicting(modelUrl);
-    if (!predictionState) {
-      return '';
-    }
-    return predictionState.topClass;
+    return this.topClass;
   }
 
 
@@ -324,36 +322,32 @@ export default class gestureRecognition extends extension({
 
   getClasses() {
     if (
-      !this.teachableImageModel ||
-      !this.predictionState ||
-      !this.predictionState[this.teachableImageModel] ||
-      !this.predictionState[this.teachableImageModel].hasOwnProperty('model')
+      !this.teachableImageModel
     ) {
       return ["Select a class"];
     }
 
-    if (this.predictionState[this.teachableImageModel].modelType === this.ModelType.AUDIO) {
-      return this.predictionState[this.teachableImageModel].model.wordLabels();
+
+    let model = this.predictionState[this.teachableImageModel];
+
+    if (!model) {
+      return ["Select a class"];
     }
 
-    return this.predictionState[this.teachableImageModel].model.getClassLabels();
-  }
+    if(this.isKnnModel(model)) {
+      // kNN model
+      let labels = model.segments.map((segment: any) => segment.label);
 
-  model_match(state) {
-    const modelUrl = this.teachableImageModel;
-    const className = state;
-
-    const predictionState = this.getPredictionStateOrStartPredicting(modelUrl);
-    if (!predictionState) {
-      return false;
+      // Return unique labels
+      return Array.from(new Set(labels));
     }
 
-    const currentMaxClass = predictionState.topClass;
-    return (currentMaxClass === String(className));
-  }
+    if(this.isNNModel(model)) {
+      // NN model
+      return model.outputLabels;
+    }
 
-  getClassConfidence(state): number {
-    return this.modelConfidences[state];
+    return ["Select a class"];
   }
 
   /**
@@ -474,7 +468,7 @@ export default class gestureRecognition extends extension({
 
   @legacyBlock.whenModelMatches(dynamicClassMenu)
   whenModelMatches(state: string) {
-    return this.model_match(state);
+    return this.topClass === String(state);
   }
 
   @legacyBlock.modelPrediction()
@@ -484,7 +478,7 @@ export default class gestureRecognition extends extension({
 
   @legacyBlock.modelMatches(dynamicClassMenu)
   modelMatches(state: string) {
-    return this.model_match(state);
+    return this.topClass === String(state);
   }
 
   @legacyBlock.videoToggle({
