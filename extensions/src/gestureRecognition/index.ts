@@ -96,7 +96,7 @@ export default class gestureRecognition extends extension({
      * Occasionally run prediction on pose data
      * @private
      */
-  _loop() {
+  async _loop() {
     setTimeout(this._loop.bind(this), Math.max(this.runtime.currentStepTime, this.INTERVAL));
 
     // Skip if model not loaded
@@ -122,7 +122,7 @@ export default class gestureRecognition extends extension({
         return pose.landmarks.flatMap((l: any) => [l.x, l.y, l.z]);
     });
 
-    let inputFeatures = poseData[0].length * 3;
+    let inputFeatures = poseData[0].length;
 
     let model = this.getPredictionStateOrStartPredicting(this.teachableImageModel);
 
@@ -134,7 +134,7 @@ export default class gestureRecognition extends extension({
     let result;
     if (this.isNNModel(model)) {
       // This is a NNClassifierModel
-      result = nnPredict(model, poseData, inputFeatures);
+      result = await nnPredict(model, poseData, inputFeatures);
       console.log("NN prediction result:", result);
     } else if (this.isKnnModel(model)) {
       // This is a kNNClassifierModel
