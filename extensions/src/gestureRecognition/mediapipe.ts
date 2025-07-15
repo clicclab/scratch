@@ -20,7 +20,7 @@ export class MediaPipePoseDetector {
                     modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
                     delegate: "GPU"
                 },
-                runningMode: "VIDEO",
+                runningMode: "IMAGE",
                 numPoses: 1
             });
             
@@ -35,14 +35,14 @@ export class MediaPipePoseDetector {
      * Detect pose landmarks from a video element at the current time
      * Returns normalized coordinates (0-1) relative to the video frame
      */
-    detectPose(videoElement: HTMLVideoElement): {landmarks: Vector3[], videoLandmarks: Vector3[]} | null {
+    detectPose(videoElement: TexImageSource): {landmarks: Vector3[], videoLandmarks: Vector3[]} | null {
         if (!this.poseLandmarker || !this.isInitialized) {
             return null;
         }
 
         try {
-            const results = this.poseLandmarker.detectForVideo(videoElement, performance.now());
-            
+            const results = this.poseLandmarker.detect(videoElement);
+
             if (results.landmarks && results.landmarks.length > 0) {
                 // Convert MediaPipe landmarks to our Vector3 format
                 // MediaPipe returns normalized coordinates (0-1) for x and y

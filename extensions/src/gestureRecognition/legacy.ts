@@ -37,20 +37,6 @@ export const info = {
       }
     },
     {
-      "opcode": "classConfidence",
-      "text": "confidence for [CLASS_NAME]",
-      "blockType": "reporter",
-      "isTerminal": true,
-      "arguments": {
-        "CLASS_NAME": {
-          "type": "string",
-          // "defaultValue": "Class 1",
-          "defaultValue": "Select a class",
-          "menu": "CLASS_NAME"
-        }
-      }
-    },
-    {
       "opcode": "videoToggle",
       "text": "turn video [VIDEO_STATE]",
       "arguments": {

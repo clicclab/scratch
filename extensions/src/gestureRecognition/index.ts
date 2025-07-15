@@ -1,6 +1,8 @@
 import { Environment, buttonBlock, extension } from "$common";
 import { legacyFullSupport, } from "./legacy";
 import * as tf from '@tensorflow/tfjs';
+import { MediaPipePoseDetector } from "./mediapipe";
+import { PoseDataPoint } from "./types";
 
 const { legacyBlock, legacyExtension } = legacyFullSupport.for<gestureRecognition>();
 const VideoState = {
@@ -31,14 +33,16 @@ export default class gestureRecognition extends extension({
   predictionState = {};
   teachableImageModel;
   latestAudioResults: any;
+  poseDetector: MediaPipePoseDetector | null = null;
 
   test: string = "";
 
   /**
-   * Video refresh rate
+   * Prediction refresh rate
    * @type {number}
    */
-  INTERVAL = 33;
+  INTERVAL = 500;
+
   /**
    * Dimensions of the video frame
    * @type {number[]}
@@ -82,27 +86,46 @@ export default class gestureRecognition extends extension({
   _loop() {
     setTimeout(this._loop.bind(this), Math.max(this.runtime.currentStepTime, this.INTERVAL));
 
-    // Add frame to detector
-    const time = Date.now();
-    if (this.lastUpdate === null) {
-      this.lastUpdate = time;
+    // Skip if model not loaded
+    if(!this.teachableImageModel) {
+      return;
     }
-    if (!this.isPredicting) {
-      this.isPredicting = 0;
-    }
-    const offset = time - this.lastUpdate;
 
-    // TODO: Self-throttle interval if slow to run predictions
-    if (offset > this.INTERVAL && this.isPredicting === 0) {
-      const frame = this.runtime.ioDevices.video.getFrame({
-        format: 'image-data',
-        dimensions: this.DIMENSIONS
-      });
+    // TODO: Predict
+  }
 
-      this.lastUpdate = time;
-      this.isPredicting = 0;
-      this.predictAllBlocks(frame);
-    }
+    poseDetectionFrame: number | null = null;
+    poseRecordingData: PoseDataPoint[] = [];
+
+    startPoseDetectionLoop() {
+      const detect = () => {
+
+        const frame = this.runtime.ioDevices.video.getFrame({
+          format: 'image-data',
+          dimensions: this.DIMENSIONS
+        });
+
+        if (!this.poseDetector || !frame) {
+          this.poseDetectionFrame = requestAnimationFrame(detect);
+          return;
+        }
+
+        // Detect pose landmarks in the current video frame
+        const landmarks = this.poseDetector.detectPose(frame);
+
+        if (landmarks && landmarks.landmarks.length > 0) {
+            this.poseRecordingData.push({
+                timestamp: Date.now(),
+                landmarks: landmarks.landmarks,
+                videoLandmarks: landmarks.videoLandmarks,
+            });
+          }
+        
+
+        this.poseDetectionFrame = requestAnimationFrame(detect);
+      };
+
+      this.poseDetectionFrame = requestAnimationFrame(detect);
   }
 
   async predictAllBlocks(frame) {
@@ -163,26 +186,15 @@ export default class gestureRecognition extends extension({
     }
   }
 
-  async startPredicting(modelDataUrl) {
-    const alreadyLoaded = Boolean(this.predictionState[modelDataUrl]);
-    try {
-      const indicator = await this.indicate({
-        type: "warning",
-        msg: alreadyLoaded ? "Updating model" : "Loading model"
-      });
-      this.predictionState[modelDataUrl] = {};
-      // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
-      const { model, type } = await this.initModel(modelDataUrl);
-      this.predictionState[modelDataUrl].modelType = type;
-      this.predictionState[modelDataUrl].model = model;
-      this.runtime.requestToolboxExtensionsUpdate();
-      indicator.close();
-      this.indicateFor({ type: "success", msg: "Model loaded" }, 1);
-    } catch (e) {
-      this.predictionState[modelDataUrl] = {};
-      console.log("Model initialization failure!", e);
-      this.indicateFor({ type: "error", msg: "Unable to load model." }, 1);
+  async setUpPoseDetection() {
+    if (this.poseDetector) {
+      return; // Already initialized
     }
+
+    console.log("Starting pose detection");
+    this.poseDetector = new MediaPipePoseDetector();
+    await this.poseDetector.initialize();
+    this.startPoseDetectionLoop();
   }
 
   /**
@@ -198,41 +210,12 @@ export default class gestureRecognition extends extension({
     return predictionState.topClass;
   }
 
-  async initModel(modelUrl) {
-    const avoidCache = `?x=${Date.now()}`;
-    const modelURL = modelUrl + "model.json" + avoidCache;
-    const metadataURL = modelUrl + "metadata.json" + avoidCache;
-    const customMobileNet = await tmImage.load(modelURL, metadataURL);
-    if ((customMobileNet as any)._metadata.hasOwnProperty('tfjsSpeechCommandsVersion')) {
-      // customMobileNet.dispose(); // too early to dispose
-      //console.log("We got a speech net yay")
-      const recognizer = create("BROWSER_FFT", undefined, modelURL, metadataURL);
-      await recognizer.ensureModelLoaded();
-      await recognizer.listen(async result => {
-        this.latestAudioResults = result;
-        //console.log(result);
-      }, {
-        includeSpectrogram: true, // in case listen should return result.spectrogram
-        probabilityThreshold: 0.75,
-        invokeCallbackOnNoiseAndUnknown: true,
-        overlapFactor: 0.50 // probably want between 0.5 and 0.75. More info in README
-      });
-      return { model: recognizer, type: this.ModelType.AUDIO };
-    } else if ((customMobileNet as any)._metadata.packageName === "@teachablemachine/pose") {
-      const customPoseNet = await tmPose.load(modelURL, metadataURL);
-      return { model: customPoseNet, type: this.ModelType.POSE };
-    } else {
-      console.log(customMobileNet.getMetadata(), customMobileNet.getTotalClasses(), customMobileNet.getClassLabels());
-      return { model: customMobileNet, type: this.ModelType.IMAGE };
-    }
-  }
-
 
   /**
    * Accepts a base64-encoded JSON string representing a KnnClassifierModel or NNClassifierModel.
    * Decodes, parses, and stores the model for prediction.
    */
-  useModel(base64Model: string) {
+  async useModel(base64Model: string) {
     try {
       // Decode base64 to JSON string (opposite of exportNNModelToBase64)
       const exportStr = decodeURIComponent(escape(atob(base64Model)));
@@ -266,6 +249,8 @@ export default class gestureRecognition extends extension({
       this.teachableImageModel = null;
       console.error("Failed to load model from base64 string", e);
     }
+
+    await this.setUpPoseDetection();
   }
 
   updateStageModel(modelUrl) {
@@ -279,7 +264,6 @@ export default class gestureRecognition extends extension({
   getPredictionStateOrStartPredicting(modelUrl, override = false) {
     const hasPredictionState = this.predictionState.hasOwnProperty(modelUrl);
     if (!hasPredictionState || override) {
-      this.startPredicting(modelUrl);
       return null;
     }
     return this.predictionState[modelUrl];
@@ -412,7 +396,7 @@ export default class gestureRecognition extends extension({
 
     const okBtn = document.createElement('button');
     okBtn.textContent = 'Load Model';
-    okBtn.onclick = () => {
+    okBtn.onclick = async () => {
       const val = textarea.value.trim();
       if (!val) {
         error.textContent = 'Please paste a model string.';
@@ -420,7 +404,7 @@ export default class gestureRecognition extends extension({
         return;
       }
       try {
-        this.useModel(val);
+        await this.useModel(val);
         modal.remove();
       } catch (e) {
         error.textContent = 'Invalid model string.';
@@ -448,11 +432,6 @@ export default class gestureRecognition extends extension({
   @legacyBlock.modelMatches(dynamicClassMenu)
   modelMatches(state: string) {
     return this.model_match(state);
-  }
-
-  @legacyBlock.classConfidence(dynamicClassMenu)
-  classConfidence(state: string) {
-    return this.getClassConfidence(state);
   }
 
   @legacyBlock.videoToggle({
