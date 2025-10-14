@@ -1,0 +1,19 @@
+{
+  "name": "bball-detect-extension",
+  "version": "1.0.0",
+  "description": "An extension created using the PRG AI Blocks framework",
+  "main": "index.ts",
+  "scripts": {
+    "directory": "echo bballDetect",
+    "test": "pnpm --filter prg-extension-root test bballDetect/index.test.ts",
+    "dev": "pnpm --filter prg-extension-root dev --include bballDetect",
+    "add:ui": "pnpm --filter prg-extension-root add:ui bballDetect",
+    "add:arg": "pnpm --filter prg-extension-root add:arg bballDetect"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "tfjs": "link:@types/tensorflow/tfjs"
+  }
+}
