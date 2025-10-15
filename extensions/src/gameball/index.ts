@@ -24,7 +24,7 @@ const dynamicGameballMenu = (self: Gameball) => ({
     0: {
       getItems: () => {
         try {
-          const items = self.getConnectedGameballs();
+          const items = self.connectedGameballs;
           return Array.isArray(items) ? [...items] : ["---"];
         } catch (e) {
           console.error("Error building Gameball menu", e);
@@ -58,13 +58,16 @@ export default class Gameball extends extension({
   }
 
   @legacyBlock.readAccel()
-  readAccel(NUMBER: string, AXIS: string): number {
+  readAccel(ACC_NUMBER: string, ACC_AXES: string): number {
     // This block is for a single, globally tracked ball if desired.
     // We'll have it mirror the first connected ball for simplicity.
+    console.log(arguments);
     const firstBallName = this.connectedGameballs[0];
     if (firstBallName && this.gameballs[firstBallName]) {
-      const ballData = this.gameballs[firstBallName][NUMBER];
-      return ballData ? (ballData[AXIS] || -1) : -1;
+      console.log(firstBallName, this.gameballs);
+      const ballData = this.gameballs[firstBallName][ACC_NUMBER];
+      console.log(ballData, ACC_NUMBER, ACC_AXES);
+      return ballData ? (ballData[ACC_AXES] || -1) : -1;
     }
     return -1;
   }
@@ -125,9 +128,13 @@ export default class Gameball extends extension({
     const server = await device.gatt.connect();
     const devName = device.name;
 
+    console.log(`Connected to ${devName}`);
+
     // Start accelerometer services
     await this.startAccel("accel1", Uint8Array.of(0x197), Uint16Array.of(this.thresholdVals["medium"]), server);
     await this.startAccel("accel2", Uint8Array.of(0x647), Uint16Array.of(this.thresholdVals["medium"]), server);
+
+    console.log(`Started accelerometers on ${devName}`);
 
     // Configure and start data stream
     const sService = await server.getPrimaryService(gameballUuid.sensorStreamService);
@@ -159,6 +166,9 @@ export default class Gameball extends extension({
 
     this.gameballs[devName]["1"] = { ...accel1, strength: this.getStrength(accel1) };
     this.gameballs[devName]["2"] = { ...accel2, strength: this.getStrength(accel2) };
+
+    // For debugging:
+    console.log(`Data from ${devName}:`, this.gameballs[devName]);
   }
 
   async startAccel(accelName: string, settingsVal: BufferSource, thresholdVal: BufferSource, server: BluetoothRemoteGATTServer) {

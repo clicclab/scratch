@@ -6,21 +6,16 @@ export const info = {
   "showStatusButton": true,
   "blocks": [
     {
-      "opcode": "connectButton",
-      "blockType": "button",
-      "text": "Connect Gameball"
-    },
-    {
       "opcode": "readAccel",
       "blockType": "reporter",
-      "text": "read accel [NUMBER] [AXIS]",
+      "text": "read accel [ACC_NUM] [ACC_AXES]",
       "arguments": {
-        "NUMBER": {
+        "ACC_NUM": {
           "type": "string",
           "menu": "ACC_NUM",
           "defaultValue": "1"
         },
-        "AXIS": {
+        "ACC_AXES": {
           "type": "string",
           "menu": "ACC_AXES",
           "defaultValue": "x"
@@ -68,20 +63,33 @@ export const info = {
     }
   ],
   "menus": {
-    "GBS_CONNECTED": "getConnectedGameballs",
     "ACC_NUM": {
-      "acceptReporters": true,
-      "items": ["1", "2"]
+        "acceptReporters": false,
+        "items": [
+            {"text": "1", "value": "1"},
+            {"text": "2", "value": "2"}
+        ]
     },
     "ACC_AXES": {
-      "acceptReporters": true,
-      "items": ["x", "y", "z", "strength"]
+        "acceptReporters": false,
+        "items": [
+            {"text": "x", "value": "x"},
+            {"text": "y", "value": "y"},
+            {"text": "z", "value": "z"},
+            {"text": "strength", "value": "strength"}
+        ]
     },
+    "GBS_CONNECTED": "getConnectedGameballs",
     "THRESH_OPTIONS": {
       "acceptReporters": true,
-      "items": ["low", "medium", "high"]
-    }
+      "items": [
+        {"text": "low", "value": "low"},
+        {"text": "medium", "value": "medium"},
+        {"text": "high", "value": "high"}
+      ]
+    },
   }
 } as const;
 
 export const legacyFullSupport = legacy(info);
+export const legacyIncrementalSupport = legacy(info, { "incrementalDevelopment": true });
