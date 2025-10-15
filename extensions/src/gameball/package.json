@@ -1,0 +1,15 @@
+{
+  "name": "gameball-extension",
+  "version": "1.0.0",
+  "description": "An extension created using the PRG AI Blocks framework",
+  "main": "index.ts",
+  "scripts": {
+    "directory": "echo gameball",
+    "test": "pnpm --filter prg-extension-root test gameball/index.test.ts",
+    "dev": "pnpm --filter prg-extension-root dev --include gameball",
+    "add:ui": "pnpm --filter prg-extension-root add:ui gameball",
+    "add:arg": "pnpm --filter prg-extension-root add:arg gameball"
+  },
+  "author": "",
+  "license": "ISC"
+}
